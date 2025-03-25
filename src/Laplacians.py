@@ -1,11 +1,40 @@
 
-from scipy.sparse import diags
+import scipy.sparse
 from scipy.sparse.linalg import eigs, eigsh
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
-from scipy.spatial import distance_matrix
+from matplotlib.animation import FuncAnimation
+
+def laplacian(L,N,h): 
+    # Create grid
+    x = np.linspace(0, L, N)
+    y = np.linspace(0, L, N)
+    X, Y = np.meshgrid(x, y)
+
+    # Initialize Laplacian matrix
+    size = N * N
+    M = scipy.sparse.lil_matrix((size, size), dtype=float)
+
+    # Fill Laplacian matrix
+    for i in range(N):
+        for j in range(N):
+            index = i * N + j  # Convert 2D index to 1D
+            if i == 0 or i == N - 1 or j == 0 or j == N - 1:
+                # Boundary condition: v = 0
+                M[index, index] = 1
+            else:
+                # Interior points
+                M[index, index] = -4 / h**2
+                M[index, index + 1] = 1 / h**2  # Right neighbor
+                M[index, index - 1] = 1 / h**2  # Left neighbor
+                M[index, index + N] = 1 / h**2  # Top neighbor
+                M[index, index - N] = 1 / h**2  # Bottom neighbor
+
+    # Convert to sparse matrix for faster computation
+    return M.tocsc()
+
 
 
 def laplacian_grid_square(n, viz = False):
@@ -239,56 +268,256 @@ def laplacian_circle(n, sparse = True):
     
     return (sp.csr_matrix(L), points) if sparse else (L, points)
 
-# eigenfrequencies, eigenmodus = sp.linalg.eigs(laplacian_grid_square(3))
-# print(eigenfrequencies)
+def plot_laplacian(N):
+    """
+    Plots the Laplacian matrix and the grid structure for an N x N grid.
 
-# Square
-Ls = np.array(range(4,50))
-results_sq = []
-xs_sq = []
-for L in Ls:
-    eigenfrequencies, eigenmodus = sp.linalg.eigs(laplacian_grid_square_in_box(L,L+1))
-    results_sq.append(eigenfrequencies)
+    Parameters:
+        N (int): Number of grid points per dimension.
+    """
+    # Create grid
+    x = np.linspace(0, 4, N)
+    y = np.linspace(0, 4, N)
+    X, Y = np.meshgrid(x, y)
 
-for i,res in enumerate(results_sq):
-    x = np.full(len(res),Ls[i])
-    xs_sq.append(x)
+    # Initialize Laplacian matrix
+    size = N * N
+    M = scipy.sparse.lil_matrix((size, size), dtype=float)
+
+    # Fill Laplacian matrix
+    for i in range(N):
+        for j in range(N):
+            index = i * N + j  # Convert 2D index to 1D
+            if i == 0 or i == N - 1 or j == 0 or j == N - 1:
+                # Boundary condition: v = 0
+                M[index, index] = 1
+            else:
+                # Interior points
+                M[index, index] = -4
+                M[index, index + 1] = 1  # Right neighbor
+                M[index, index - 1] = 1  # Left neighbor
+                M[index, index + N] = 1  # Top neighbor
+                M[index, index - N] = 1  # Bottom neighbor
+
+    # Convert to dense matrix for visualization
+    M_dense = M.toarray()
+
+    # Plot Laplacian matrix
+    plt.figure(figsize=(10, 5))
+
+    # Plot 1: Laplacian matrix
+    plt.subplot(1, 2, 1)
+    plt.imshow(M_dense, cmap='coolwarm', interpolation='none')
+    plt.title("Laplacian Matrix")
+    plt.colorbar()
+
+    # Plot 2: Grid structure
+    plt.subplot(1, 2, 2)
+    for i in range(N):
+        for j in range(N):
+            # Plot grid points
+            plt.plot(X[i, j], Y[i, j], 'ko', markersize=10)
+            # Plot connections to neighbors
+            if i < N - 1:
+                plt.plot([X[i, j], X[i + 1, j]], [Y[i, j], Y[i + 1, j]], 'k-')  # Bottom neighbor
+            if j < N - 1:
+                plt.plot([X[i, j], X[i, j + 1]], [Y[i, j], Y[i, j + 1]], 'k-')  # Right neighbor
+
+    plt.title("Grid Structure")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.gca().set_aspect('equal', adjustable='box')
+
+    plt.tight_layout()
+    plt.savefig("figs/laplacian_and_grid", dpi = 300)
+    plt.show()
+
+def plot_original_object(shape, L, N):
+    """
+    Plots the original object (square, rectangle, or circle) on a grid.
+
+    Parameters:
+        shape (str): Shape of the object ("square", "rectangle", or "circle").
+        L (float): Side length or diameter of the object.
+        N (int): Number of grid points per dimension.
+    """
+    # Create grid
+    if shape == "square":
+        x = np.linspace(0, L, N)
+        y = np.linspace(0, L, N)
+    elif shape == "rectangle":
+        x = np.linspace(0, L, N)
+        y = np.linspace(0, 2 * L, 2 * N)
+    elif shape == "circle":
+        x = np.linspace(-L/2, L/2, N)
+        y = np.linspace(-L/2, L/2, N)
+    X, Y = np.meshgrid(x, y)
+
+    # Plot the object
+    plt.figure(figsize=(6, 6))
+    if shape == "circle":
+        # Plot the circle boundary
+        circle = plt.Circle((0, 0), L/2, edgecolor='r', facecolor='none', linewidth=2)
+        plt.gca().add_patch(circle)
+        # Plot grid points inside the circle
+        inside_circle = X**2 + Y**2 <= (L/2)**2
+        plt.scatter(X[inside_circle], Y[inside_circle], c='b', s=10, label="Grid Points")
+    else:
+        # Plot grid points for square or rectangle
+        plt.scatter(X, Y, c='b', s=10, label="Grid Points")
+
+    plt.title(f"{shape.capitalize()} (L = {L}, N = {N})")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def solve_eigenmodes(shape, n, num_modes=6):
+    """Solve for the eigenmodes of the specified shape."""
+    if shape == 'square':
+        L = laplacian_grid_square(n)
+        # For visualization
+        grid_shape = (n, n)
+        reshape_func = lambda v: v.reshape(grid_shape)
+    elif shape == 'circle':
+        L, points = laplacian_circle(n)
+        grid_shape = None
+        reshape_func = lambda v: v  # No reshape for circle
     
-
-plt.scatter(xs_sq,results_sq, s = 10, color = 'green')
-plt.title("Square")
-plt.show()
-
-
-# Rectangle
-results_rect = []
-xs_rect = []
-for L in Ls:
-    eigenfrequencies, eigenmodus = sp.linalg.eigs(rectangle_laplacian_grid(L, L+1))
-    results_rect.append(eigenfrequencies)
-
-for i,res in enumerate(results_rect):
-    x = np.full(len(res),Ls[i])
-    xs_rect.append(x)
+    # Solve for eigenvalues and eigenvectors
+    eigenvalues, eigenvectors = eigs(L, k=num_modes, which='SM')
     
-
-plt.scatter(xs_rect,results_rect, s = 10, color = 'blue')
-plt.title("Rectangle")
-plt.show()
-
-# Circle
-results_circ = []
-xs_circ = []
-for L in Ls:
-    laplacian, grid_points = laplacian_circle(L)
-    eigenfrequencies, eigenmodus = sp.linalg.eigs(laplacian)
-    results_circ.append(eigenfrequencies)
-
-for i,res in enumerate(results_circ):
-    x = np.full(len(res),Ls[i])
-    xs_circ.append(x)
+    # For wave equation, eigenvalues should be negative
+    eigenvalues = -eigenvalues
     
+    #extract real part of eigenvalues and eigenvectors
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors = np.real(eigenvectors)
 
-plt.scatter(xs_circ,results_circ, s = 10, color = 'red')
-plt.title("Circle")
-plt.show()
+    # Sort eigenvalues and eigenvectors
+    idx = np.argsort(eigenvalues)
+    eigenvalues = eigenvalues[idx]
+    eigenvectors = eigenvectors[:, idx]
+    
+    # Calculate frequencies (sqrt of eigenvalues)
+    frequencies = np.sqrt(eigenvalues)
+    
+    return frequencies, eigenvectors, grid_shape, reshape_func, points if shape == 'circle' else None
+
+def plot_eigenmodes(shape, frequencies, eigenvectors, grid_shape, reshape_func, points=None):
+    """Plot the first few eigenmodes."""
+    num_modes = min(3, len(frequencies))
+    
+    for i in range(num_modes):
+        plt.figure(figsize=(5, 4))
+        if shape == 'square':
+            mode = reshape_func(eigenvectors[:, i])
+            plt.imshow(mode, cmap='RdBu')
+            plt.colorbar(label='Amplitude')
+        elif shape == 'circle':
+            x, y = zip(*points)
+            plt.scatter(x, y, c=eigenvectors[:, i], cmap='RdBu', s=30)
+            plt.colorbar(label='Amplitude')
+            plt.axis('equal')
+        
+        plt.title(f'Eigenmode {i+1}, λ = {frequencies[i]:.4f}')
+        plt.tight_layout()
+        plt.savefig(f"figs/eigenmode{i+1}_lambda{frequencies[i]:.4f}_{shape}.png")
+        plt.show()
+
+def create_time_animation(shape, frequency, eigenvector, grid_shape, reshape_func, points=None):
+    """Create an animation showing time evolution of an eigenmode."""
+    fig, ax = plt.subplots(figsize=(5, 4))
+    
+    # Set up the initial plot
+    if shape == 'square':
+        mode = reshape_func(eigenvector)
+        img = ax.imshow(mode, cmap='RdBu', interpolation='nearest',
+                       vmin=-np.abs(eigenvector).max(), vmax=np.abs(eigenvector).max())
+        plt.colorbar(img, ax=ax, label='Amplitude')
+    elif shape == 'circle':
+        x, y = zip(*points)
+        scatter = ax.scatter(x, y, c=eigenvector, cmap='RdBu', s=30,
+                           vmin=-np.abs(eigenvector).max(), vmax=np.abs(eigenvector).max())
+        plt.colorbar(scatter, ax=ax, label='Amplitude')
+        ax.set_aspect('equal')
+    
+    # Define the update function for animation
+    def update(frame):
+        # Time value between 0 and 2π
+        t = 2 * np.pi * frame / 50
+        # Apply time dependence: u(x,y,t) = v(x,y) * cos(λt)
+        amplitude = np.cos(frequency * t)
+        
+        if shape == 'square':
+            img.set_array(amplitude * reshape_func(eigenvector))
+            return [img]
+        elif shape == 'circle':
+            scatter.set_array(amplitude * eigenvector)
+            return [scatter]
+    
+    # Create the animation
+    anim = FuncAnimation(fig, update, frames=50, interval=100, blit=True)
+    
+    # Display the title
+    ax.set_title(f'Eigenmode Time Evolution, λ = {frequency:.4f}')
+    plt.tight_layout()
+    
+    return anim, fig
+
+if __name__ == "main":
+    # eigenfrequencies, eigenmodus = sp.linalg.eigs(laplacian_grid_square(3))
+    # print(eigenfrequencies)
+
+    # Square
+    Ls = np.array(range(4,50))
+    results_sq = []
+    xs_sq = []
+    for L in Ls:
+        eigenfrequencies, eigenmodus = sp.linalg.eigs(laplacian_grid_square_in_box(L,L+1))
+        results_sq.append(eigenfrequencies)
+
+    for i,res in enumerate(results_sq):
+        x = np.full(len(res),Ls[i])
+        xs_sq.append(x)
+        
+
+    plt.scatter(xs_sq,results_sq, s = 10, color = 'green')
+    plt.title("Square")
+    plt.show()
+
+
+    # Rectangle
+    results_rect = []
+    xs_rect = []
+    for L in Ls:
+        eigenfrequencies, eigenmodus = sp.linalg.eigs(rectangle_laplacian_grid(L, L+1))
+        results_rect.append(eigenfrequencies)
+
+    for i,res in enumerate(results_rect):
+        x = np.full(len(res),Ls[i])
+        xs_rect.append(x)
+        
+
+    plt.scatter(xs_rect,results_rect, s = 10, color = 'blue')
+    plt.title("Rectangle")
+    plt.show()
+
+    # Circle
+    results_circ = []
+    xs_circ = []
+    for L in Ls:
+        laplacian, grid_points = laplacian_circle(L)
+        eigenfrequencies, eigenmodus = sp.linalg.eigs(laplacian)
+        results_circ.append(eigenfrequencies)
+
+    for i,res in enumerate(results_circ):
+        x = np.full(len(res),Ls[i])
+        xs_circ.append(x)
+        
+
+    plt.scatter(xs_circ,results_circ, s = 10, color = 'red')
+    plt.title("Circle")
+    plt.show()
